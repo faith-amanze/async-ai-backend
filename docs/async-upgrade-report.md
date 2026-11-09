@@ -4,6 +4,8 @@
 
 \## 1. Updated endpoint
 
+
+
 I upgraded `POST /summarise` (`app/main.py`). It is `async def` because it awaits an async operation:
 
 
@@ -28,17 +30,17 @@ async def summarise(body: TextIn):
 
 
 
-`generate\_summary` is an async service function in `app/ai\_service.py`. It uses a fake AI call
+`generate\_summary` is an async service function in `app/ai\_service.py`. It uses a fake AI call (`asyncio.sleep`) because no API key is needed; `\_call\_model` can be replaced by a real async client.
 
-(`asyncio.sleep`) because no API key is needed; `\_call\_model` can be replaced by a real async client.
 
-Because I use `await`, the endpoint returns the final string, not a coroutine object
 
-(checked by `test\_summarise\_returns\_result\_not\_coroutine`).
+Because I use `await`, the endpoint returns the final string, not a coroutine object (checked by `test\_summarise\_returns\_result\_not\_coroutine`).
 
 
 
 \## 2. Async flow
+
+
 
 1\. Request arrives -> FastAPI runs `summarise` on the event loop.
 
@@ -64,6 +66,8 @@ Because I use `await`, the endpoint returns the final string, not a coroutine ob
 
 \## 3. Sequential vs concurrent
 
+
+
 New endpoints generate three independent outputs (summary, quiz, flashcards):
 
 
@@ -88,33 +92,41 @@ Measured by calling both endpoints in the FastAPI `/docs` page, with a simulated
 
 
 
+!\[FastAPI /docs timing results](images/fastapi-docs.png)
+
+
+
 This is a \~3x speed-up, because the three calls are independent and spend their time waiting.
 
 
 
 \## 4. Timeout test
 
+
+
 `tests/test\_async.py::test\_timeout\_returns\_504` sets the fake AI delay to 1.0 s and the timeout to 0.2 s.
 
+
+
 Expected result: HTTP 504 with the friendly message, returned after \~0.2 s instead of hanging.
+
+
 
 Run with `pytest -q`.
 
 
 
-I also tested temporary failure: `POST /summarise` with `{"text": "please fail"}` returned 503 with the
-
-message "The AI service is temporarily unavailable. Please retry shortly."
+I also tested temporary failure: `POST /summarise` with `{"text": "please fail"}` returned 503 with the message "The AI service is temporarily unavailable. Please retry shortly."
 
 
 
 \## 5. When async helps
 
-Async helps when a request spends most of its time \*\*waiting on I/O\*\* (AI APIs, databases, HTTP calls):
 
-the server can handle other requests meanwhile, and independent waits can overlap with `gather`.
 
-It does \*\*not\*\* speed up CPU-heavy work (e.g. local model inference, big loops); that blocks the event loop
+Async helps when a request spends most of its time \*\*waiting on I/O\*\* (AI APIs, databases, HTTP calls): the server can handle other requests meanwhile, and independent waits can overlap with `gather`.
 
-and needs threads/processes. Also, `async def` is only useful if the body actually awaits something async.
+
+
+It does \*\*not\*\* speed up CPU-heavy work (e.g. local model inference, big loops); that blocks the event loop and needs threads/processes. Also, `async def` is only useful if the body actually awaits something async.
 
